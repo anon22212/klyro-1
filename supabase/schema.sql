@@ -8,3 +8,13 @@ create policy "projects readable" on public.projects for select using(true); cre
 create policy "applications visible to applicant or owner" on public.applications for select using(auth.uid()=applicant_id or exists(select 1 from public.projects where id=project_id and owner_id=auth.uid())); create policy "users apply as self" on public.applications for insert with check(auth.uid()=applicant_id); create policy "owners update application" on public.applications for update using(exists(select 1 from public.projects where id=project_id and owner_id=auth.uid()));
 create or replace function public.new_profile() returns trigger language plpgsql security definer set search_path=public as $$ begin insert into public.profiles(id,display_name) values(new.id,coalesce(new.raw_user_meta_data->>'name','')); return new; end; $$;
 drop trigger if exists create_profile_on_signup on auth.users; create trigger create_profile_on_signup after insert on auth.users for each row execute procedure public.new_profile();
+alter table public.projects add column if not exists image_url text;
+insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types) values('project-images','project-images',true,4194304,array['image/jpeg','image/png','image/webp','image/gif']) on conflict(id) do update set public=true,file_size_limit=4194304,allowed_mime_types=array['image/jpeg','image/png','image/webp','image/gif'];
+drop policy if exists "public project images readable" on storage.objects;
+create policy "public project images readable" on storage.objects for select using(bucket_id='project-images');
+drop policy if exists "users upload own project images" on storage.objects;
+create policy "users upload own project images" on storage.objects for insert to authenticated with check(bucket_id='project-images' and (storage.foldername(name))[1]=auth.uid()::text);
+drop policy if exists "users update own project images" on storage.objects;
+create policy "users update own project images" on storage.objects for update to authenticated using(bucket_id='project-images' and (storage.foldername(name))[1]=auth.uid()::text) with check(bucket_id='project-images' and (storage.foldername(name))[1]=auth.uid()::text);
+drop policy if exists "users delete own project images" on storage.objects;
+create policy "users delete own project images" on storage.objects for delete to authenticated using(bucket_id='project-images' and (storage.foldername(name))[1]=auth.uid()::text);
