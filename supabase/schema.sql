@@ -18,3 +18,16 @@ drop policy if exists "users update own project images" on storage.objects;
 create policy "users update own project images" on storage.objects for update to authenticated using(bucket_id='project-images' and (storage.foldername(name))[1]=auth.uid()::text) with check(bucket_id='project-images' and (storage.foldername(name))[1]=auth.uid()::text);
 drop policy if exists "users delete own project images" on storage.objects;
 create policy "users delete own project images" on storage.objects for delete to authenticated using(bucket_id='project-images' and (storage.foldername(name))[1]=auth.uid()::text);
+
+-- Admin is granted through auth.users.raw_app_meta_data, never from client-visible profile fields.
+create or replace function public.is_admin() returns boolean language sql stable security definer set search_path=public as $$ select coalesce(auth.jwt()->'app_metadata'->>'role'='admin',false); $$;
+grant execute on function public.is_admin() to authenticated;
+drop policy if exists "admins read all applications" on public.applications;
+create policy "admins read all applications" on public.applications for select to authenticated using(public.is_admin());
+drop policy if exists "admins update applications" on public.applications;
+create policy "admins update applications" on public.applications for update to authenticated using(public.is_admin()) with check(public.is_admin());
+drop policy if exists "admins manage projects" on public.projects;
+create policy "admins manage projects" on public.projects for all to authenticated using(public.is_admin()) with check(public.is_admin());
+-- After the owner has registered, grant admin role in SQL Editor by replacing ADMIN_EMAIL_HERE with their verified email:
+-- update auth.users set raw_app_meta_data = coalesce(raw_app_meta_data,'{}'::jsonb) || '{"role":"admin"}'::jsonb where lower(email)=lower('ADMIN_EMAIL_HERE');
+-- Then sign out and back in so the refreshed JWT includes the role.
