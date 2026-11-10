@@ -1,10 +1,255 @@
 "use client";
-import {useEffect,useMemo,useState} from "react";import {supabase} from "@/lib/supabase";import {demoProjects,Project} from "@/lib/projects";import {Search,Plus,ArrowUpRight,Sparkles,Users,Code2,Globe, X,LogIn,Heart,Compass} from "lucide-react";
-type Lang="ru"|"en";
-const words={ru:{tag:"МЕСТО, ГДЕ ИДЕИ НАХОДЯТ КОМАНДУ",headline:"Создавай в своём",accent:"вайбе.",sub:"Найди людей, с которыми хочется строить. Запускайте идеи вместе — от первого промпта до большого продукта.",explore:"Исследовать проекты",create:"Создать проект",projects:"Проекты сообщества",fresh:"Свежие идеи от людей, которые уже делают.",all:"Все проекты",partners:"Ищу напарника",teams:"Ищу команду",search:"Найти проект или навык...",join:"Откликнуться",members:"участников",skills:"Навыки",tools:"AI-инструменты",about:"О проекте",createTitle:"Расскажи о своей идее",title:"Название проекта",desc:"Что вы создаёте?",category:"Категория",need:"Какие навыки нужны? (через запятую)",submit:"Опубликовать проект",cancel:"Назад",login:"Войти",profile:"Профиль",empty:"Ничего не найдено. Попробуй изменить фильтры.",cta:"Твоя следующая идея не должна ждать.",cta2:"Найди команду, чтобы воплотить её.",getStarted:"Начать бесплатно",authTitle:"С возвращением",email:"Электронная почта",password:"Пароль",signup:"Создать аккаунт",signin:"Войти",logout:"Выйти",sent:"Отклик отправлен!",saved:"Проект опубликован!"},en:{tag:"WHERE IDEAS FIND THEIR PEOPLE",headline:"Build in your",accent:"own vibe.",sub:"Find people you love building with. Turn ideas into products — together, from the first prompt on.",explore:"Explore projects",create:"Start a project",projects:"Community projects",fresh:"Fresh ideas from people already building.",all:"All projects",partners:"Looking for a partner",teams:"Building a team",search:"Search projects or skills...",join:"I'm interested",members:"members",skills:"Skills",tools:"AI tools",about:"About the project",createTitle:"Tell us about your idea",title:"Project name",desc:"What are you building?",category:"Category",need:"Skills needed (comma separated)",submit:"Publish project",cancel:"Back",login:"Log in",profile:"Profile",empty:"No matches. Try changing filters.",cta:"Your next big idea shouldn't wait.",cta2:"Find your people and make it real.",getStarted:"Get started free",authTitle:"Welcome back",email:"Email address",password:"Password",signup:"Create account",signin:"Sign in",logout:"Log out",sent:"Application sent!",saved:"Project published!"}};
-export default function Home(){const[lang,L]=useState<Lang>("ru"),[projects,P]=useState<Project[]>(demoProjects),[filter,F]=useState("all"),[q,Q]=useState(""),[modal,M]=useState<"create"|"auth"|null>(null),[user,U]=useState<any>(null),[toast,T]=useState(""),[imagePreview,IP]=useState("");const t=words[lang];useEffect(()=>{const saved=localStorage.getItem("vibeteam-projects");if(saved)P(JSON.parse(saved));if(!supabase)return;supabase.auth.getUser().then(({data})=>U(data.user));const {data:listener}=supabase.auth.onAuthStateChange((_event,session)=>U(session?.user??null));supabase.from("projects").select("id,title,description,category,skills,technologies,image_url,collaboration_type,profiles(display_name)").order("created_at",{ascending:false}).then(({data,error})=>{if(error){console.error(error);return}if(data?.length)P(data.map((x:any)=>({id:x.id,title:x.title,description:x.description,category:x.category,skills:x.skills??[],tools:x.technologies??[],imageUrl:x.image_url??undefined,members:1,owner:x.profiles?.display_name||"VibeTeam",kind:x.collaboration_type==="partner"?"Ищу напарника":"Ищу команду",emoji:"✦"})))});return()=>listener.subscription.unsubscribe()},[]);const shown=useMemo(()=>projects.filter(p=>(filter==="all"||(filter==="partner"?p.kind==="Ищу напарника":p.kind==="Ищу команду"))&&(!q||[p.title,p.description,p.category,...p.skills,...p.tools].join(" ").toLowerCase().includes(q.toLowerCase()))),[projects,filter,q]);function msg(s:string){T(s);setTimeout(()=>T(""),2500)}async function publish(e:any){e.preventDefault();const d=new FormData(e.currentTarget);const file=d.get("image") as File;let imageUrl=imagePreview;if(file?.size&&supabase&&user){const ext=file.name.split(".").pop()||"jpg";const path=user.id+"/"+crypto.randomUUID()+"."+ext;const {error}=await supabase.storage.from("project-images").upload(path,file,{upsert:false});if(error){msg(error.message);return}imageUrl=supabase.storage.from("project-images").getPublicUrl(path).data.publicUrl}const p:Project={id:Date.now().toString(),title:String(d.get("title")),description:String(d.get("description")),category:String(d.get("category")),skills:String(d.get("skills")).split(",").map(x=>x.trim()).filter(Boolean),tools:["Cursor","Claude"],members:1,owner:user?.email?.split("@")[0]||"You",kind:String(d.get("kind")),emoji:"✦",imageUrl};const next=[p,...projects];P(next);localStorage.setItem("vibeteam-projects",JSON.stringify(next));if(supabase&&user){const {data,error}=await supabase.from("projects").insert({title:p.title,description:p.description,category:p.category,skills:p.skills,owner_id:user.id,collaboration_type:p.kind==="Ищу напарника"?"partner":"team",image_url:imageUrl||null}).select("id").single();if(error){msg(error.message);return}p.id=data.id}else localStorage.setItem("vibeteam-projects",JSON.stringify(next));M(null);msg(t.saved)}async function auth(e:any){e.preventDefault();if(!supabase){msg("Configure Supabase first");return}const d=new FormData(e.currentTarget);const fn=(e.nativeEvent.submitter as HTMLButtonElement).value;const res=fn==="signup"?await supabase.auth.signUp({email:String(d.get("email")),password:String(d.get("password"))}):await supabase.auth.signInWithPassword({email:String(d.get("email")),password:String(d.get("password"))});if(res.error)msg(res.error.message);else{U(res.data.user);M(null)}}async function google(){if(!supabase){msg("Configure Supabase first");return}const {error}=await supabase.auth.signInWithOAuth({provider:"google",options:{redirectTo:window.location.origin}});if(error)msg(error.message)}async function apply(p:Project){if(supabase){if(!user){M("auth");return}if(!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(p.id)){msg(t.sent);return}const {error}=await supabase.from("applications").insert({project_id:p.id,applicant_id:user.id,message:"Interested"});if(error){msg(error.code==="23505"?(lang==="ru"?"Ты уже откликнулся":"Already applied"):error.message);return}}msg(t.sent)}
-return <main className="min-h-screen"><nav className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5"><a className="flex items-center gap-2 text-xl font-bold" href="#"><span className="grid h-9 w-9 place-items-center rounded-xl bg-violet-500 text-white">K</span>KLYRO</a><div className="hidden items-center gap-8 text-sm text-zinc-400 md:flex"><a href="#projects" className="hover:text-white">{t.projects}</a><a href="#partners" className="hover:text-white">{t.partners}</a><a href="#about" className="hover:text-white">{t.about}</a></div><div className="flex items-center gap-3"><button onClick={()=>L(lang==="ru"?"en":"ru")} className="rounded-full border border-white/10 px-3 py-2 text-xs text-zinc-300"><Globe size={14} className="mr-1 inline"/>{lang.toUpperCase()}</button>{user?<button onClick={async()=>{await supabase?.auth.signOut();U(null)}} className="rounded-full border border-white/10 px-4 py-2 text-sm">{t.logout}</button>:<button onClick={()=>M("auth")} className="rounded-full border border-white/10 px-4 py-2 text-sm">{t.login}</button>}<button onClick={()=>M("create")} className="hidden rounded-full bg-violet-500 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-400 sm:block"><Plus size={16} className="mr-1 inline"/>{t.create}</button></div></nav>
-<section className="glow px-6 pb-24 pt-16 text-center md:pt-24"><div className="mx-auto mb-7 inline-flex items-center gap-2 rounded-full border border-violet-400/20 bg-violet-400/10 px-4 py-2 text-[11px] font-semibold tracking-[.18em] text-violet-200"><Sparkles size={14}/>{t.tag}</div><h1 className="mx-auto max-w-4xl text-5xl font-bold leading-[1.06] tracking-tight md:text-7xl">{t.headline}<br/><span className="gradient">{t.accent}</span></h1><p className="mx-auto mt-6 max-w-2xl text-base leading-7 text-zinc-400 md:text-lg">{t.sub}</p><div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row"><a href="#projects" className="rounded-full bg-white px-6 py-3.5 text-sm font-bold text-zinc-950 hover:bg-violet-100">{t.explore}<ArrowUpRight size={16} className="ml-2 inline"/></a><button onClick={()=>M("create")} className="rounded-full border border-white/15 px-6 py-3.5 text-sm font-semibold hover:bg-white/5">{t.create}<Plus size={16} className="ml-2 inline"/></button></div><div className="mt-14 flex items-center justify-center gap-3 text-xs text-zinc-500"><div className="flex -space-x-2">{["#a78bfa","#5eead4","#fda4af","#fcd34d"].map((c,i)=><span key={i} style={{background:c}} className="grid h-8 w-8 place-items-center rounded-full border-2 border-[#101018] text-black">{["M","A","S","I"][i]}</span>)}</div><span>2,400+ builders уже в комьюнити</span></div></section>
-<section id="projects" className="mx-auto max-w-7xl px-6 pb-24"><div className="mb-8 flex flex-col justify-between gap-5 md:flex-row md:items-end"><div><div className="mb-3 text-xs font-bold uppercase tracking-[.18em] text-violet-300">{t.projects}</div><h2 className="text-3xl font-bold md:text-4xl">{lang==="ru"?"Найди то, что":"Find what"} <span className="gradient">{lang==="ru"?"зажигает":"sparks you."}</span></h2><p className="mt-2 text-sm text-zinc-500">{t.fresh}</p></div><button onClick={()=>M("create")} className="self-start rounded-xl bg-violet-500 px-4 py-3 text-sm font-semibold md:self-auto"><Plus size={16} className="mr-2 inline"/>{t.create}</button></div><div className="mb-6 flex flex-col gap-3 md:flex-row"><div className="relative flex-1"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" size={18}/><input value={q} onChange={e=>Q(e.target.value)} placeholder={t.search} className="w-full rounded-xl border border-white/10 bg-white/[.03] py-3.5 pl-11 pr-4 text-sm outline-none focus:border-violet-400/60"/></div><div className="flex gap-2">{[[ "all",t.all],["partner",t.partners],["team",t.teams]].map(([v,label])=><button key={v} onClick={()=>F(v)} className={`rounded-xl px-4 py-3 text-xs ${filter===v?"bg-violet-500 text-white":"border border-white/10 text-zinc-400 hover:bg-white/5"}`}>{label}</button>)}</div></div><div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">{shown.map(p=><article key={p.id} className="card group overflow-hidden"><div className="mb-5 flex items-start justify-between p-5 pb-0"><span className="grid h-12 w-12 place-items-center rounded-2xl bg-violet-400/10 text-2xl text-violet-200">{p.emoji}</span><span className="pill">{p.category}</span></div>{p.imageUrl&&<img src={p.imageUrl} alt="" className="mb-4 h-40 w-full object-cover"/>}<div className="px-5 pb-5"><h3 className="text-lg font-bold group-hover:text-violet-200">{p.title}</h3><p className="mt-2 min-h-12 text-sm leading-6 text-zinc-400">{p.description}</p><div className="mt-4 flex flex-wrap gap-2">{p.skills.map(s=><span className="pill" key={s}>{s}</span>)}</div><div className="mt-5 flex items-center justify-between border-t border-white/[.07] pt-4"><div className="text-xs text-zinc-500"><span className="text-zinc-300">{p.owner}</span><span className="mx-2">·</span><Users size={13} className="mr-1 inline"/>{p.members} {t.members}</div><button onClick={()=>apply(p)} className="rounded-full bg-white/10 px-4 py-2 text-xs font-semibold hover:bg-violet-500">{t.join}<ArrowUpRight size={13} className="ml-1 inline"/></button></div></div></article>)}</div>{!shown.length&&<p className="py-16 text-center text-zinc-500">{t.empty}</p>}</section>
-<section id="about" className="mx-6 mb-20 rounded-3xl border border-white/10 bg-white/[.025] p-8 md:mx-auto md:max-w-7xl md:p-12"><div className="mb-3 text-xs font-bold uppercase tracking-[.18em] text-violet-300">{lang==="ru"?"О VibeTeam":"About VibeTeam"}</div><h2 className="text-3xl font-bold">{lang==="ru"?"Идеи становятся реальностью вместе.":"Ideas become real together."}</h2><p className="mt-4 max-w-3xl leading-7 text-zinc-400">{lang==="ru"?"VibeTeam соединяет вайбкодеров, дизайнеров и создателей продуктов. Публикуй идею, находи людей по навыкам и AI-инструментам, договаривайся о сотрудничестве и запускай проект.":"VibeTeam connects vibe coders, designers, and product builders. Share an idea, meet people by skills and AI tools, agree on a collaboration, and ship together."}</p><div className="mt-7 grid gap-3 sm:grid-cols-3">{[[Code2,lang==="ru"?"Совместная разработка":"Build together"],[Compass,lang==="ru"?"Поиск по навыкам":"Find by skills"],[Heart,lang==="ru"?"Сообщество создателей":"Creator community"]].map(([Icon,label]:any,i)=><div key={i} className="rounded-2xl border border-white/10 p-4"><Icon size={20} className="mb-3 text-violet-300"/><span className="text-sm">{label}</span></div>)}</div></section><section id="partners" className="mx-6 mb-20 rounded-3xl border border-violet-300/15 bg-gradient-to-r from-violet-500/15 via-[#171621] to-emerald-300/10 px-7 py-12 text-center md:mx-auto md:max-w-7xl md:py-16"><div className="mx-auto mb-5 grid h-12 w-12 place-items-center rounded-2xl bg-white/10"><Users className="text-violet-200"/></div><h2 className="text-3xl font-bold md:text-4xl">{t.cta}</h2><p className="mt-3 text-zinc-400">{t.cta2}</p><button onClick={()=>M("create")} className="mt-7 rounded-full bg-white px-6 py-3 text-sm font-bold text-zinc-900">{t.getStarted}<ArrowUpRight size={16} className="ml-2 inline"/></button></section><footer className="flex flex-col items-center justify-between gap-3 border-t border-white/10 px-6 py-7 text-xs text-zinc-500 md:flex-row"><span>© 2025 KLYRO · Built with ✦ and good vibes</span><span>Made for the ones who make things.</span></footer>
-{toast&&<div className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-full border border-violet-300/30 bg-[#22202d] px-5 py-3 text-sm shadow-xl">{toast}</div>}{modal&&<div onClick={()=>M(null)} className="fixed inset-0 z-40 grid place-items-center bg-black/70 p-4 backdrop-blur-sm"><div onClick={e=>e.stopPropagation()} className="card w-full max-w-lg p-6"><div className="mb-5 flex items-center justify-between"><h3 className="text-xl font-bold">{modal==="create"?t.createTitle:t.authTitle}</h3><button onClick={()=>M(null)}><X/></button></div>{modal==="create"?<form onSubmit={publish} className="space-y-3"><input required name="title" placeholder={t.title} className="w-full rounded-xl border border-white/10 bg-black/20 p-3 outline-none"/><textarea required name="description" placeholder={t.desc} rows={3} className="w-full rounded-xl border border-white/10 bg-black/20 p-3 outline-none"/><input required name="category" placeholder={t.category} className="w-full rounded-xl border border-white/10 bg-black/20 p-3 outline-none"/><input name="skills" placeholder={t.need} className="w-full rounded-xl border border-white/10 bg-black/20 p-3 outline-none"/><label className="block rounded-xl border border-dashed border-white/20 p-4 text-sm text-zinc-400">Project image <input type="file" name="image" accept="image/*" className="mt-2 block w-full text-xs" onChange={e=>{const file=e.target.files?.[0];if(file){if(file.size>4*1024*1024){msg("Image max size is 4 MB");e.target.value="";return}const reader=new FileReader();reader.onload=()=>IP(String(reader.result));reader.readAsDataURL(file)}}}/>{imagePreview&&<img src={imagePreview} alt="Preview" className="mt-3 h-32 w-full rounded-lg object-cover"/>}</label><select name="kind" className="w-full rounded-xl border border-white/10 bg-[#171720] p-3"><option value="Ищу команду">{t.teams}</option><option value="Ищу напарника">{t.partners}</option></select><div className="flex justify-end gap-2 pt-2"><button type="button" onClick={()=>M(null)} className="rounded-xl px-4 py-3 text-sm text-zinc-400">{t.cancel}</button><button className="rounded-xl bg-violet-500 px-5 py-3 text-sm font-bold">{t.submit}</button></div></form>:<form onSubmit={auth} className="space-y-3"><input required type="email" name="email" placeholder={t.email} className="w-full rounded-xl border border-white/10 bg-black/20 p-3 outline-none"/><input required type="password" minLength={6} name="password" placeholder={t.password} className="w-full rounded-xl border border-white/10 bg-black/20 p-3 outline-none"/><button type="button" onClick={google} className="w-full rounded-xl border border-white/10 px-4 py-3 text-sm font-semibold hover:bg-white/5">G Continue with Google</button><div className="flex gap-2"><button name="action" value="signin" className="flex-1 rounded-xl bg-violet-500 px-4 py-3 text-sm font-bold">{t.signin}</button><button name="action" value="signup" className="flex-1 rounded-xl border border-white/10 px-4 py-3 text-sm">{t.signup}</button></div></form>}</div></div>}</main>}
+
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/lib/supabase";
+import { demoProjects, Project } from "@/lib/projects";
+import { ArrowUpRight, Bookmark, BookmarkCheck, CheckCircle2, Globe2, Heart, Layers3, Plus, Search, Sparkles, Users, X, Zap } from "lucide-react";
+
+type Lang = "ru" | "en";
+type Modal = "create" | "auth" | null;
+
+const copy = {
+  ru: {
+    nav: ["Проекты", "Напарники", "Как это работает"],
+    login: "Войти", logout: "Выйти", create: "Создать проект",
+    eyebrow: "ПЛАТФОРМА ДЛЯ ТЕХ, КТО СОЗДАЁТ",
+    titleA: "Хорошие идеи", titleB: "нуждаются в людях.",
+    subtitle: "KLYRO помогает найти напарника, собрать команду и довести идею до первого релиза.",
+    browse: "Смотреть проекты", projects: "Проекты сообщества",
+    fresh: "Находи людей по навыкам, стеку и тому, как вы хотите работать.",
+    all: "Все", partner: "Ищу напарника", team: "Собираю команду",
+    search: "Поиск по проектам, навыкам, технологиям",
+    saved: "Сохранённые", members: "участников", join: "Откликнуться",
+    noResults: "По этому запросу пока ничего нет.", open: "Открыть проект",
+    how: "Как это работает", howTitle: "Меньше случайных чатов. Больше запуска.",
+    steps: [["Опубликуй идею", "Опиши, кого ищешь и что уже сделано."], ["Найди своих", "Фильтруй проекты по навыкам и инструментам."], ["Начните строить", "Откликнись и преврати разговор в продукт."]],
+    cta: "Есть идея, которую пора запустить?", ctaSub: "Опубликуй её и найди тех, кому это тоже интересно.", start: "Начать бесплатно",
+    auth: "Войти в KLYRO", email: "Электронная почта", password: "Пароль", signIn: "Войти", signUp: "Создать аккаунт", google: "Продолжить с Google",
+    createTitle: "Новый проект", projectName: "Название проекта", description: "Что вы создаёте?", category: "Категория", skills: "Нужные навыки через запятую", tools: "AI-инструменты через запятую", image: "Обложка проекта", collaboration: "Формат поиска", publish: "Опубликовать", back: "Назад",
+    sent: "Отклик отправлен", published: "Проект опубликован", added: "Сохранено", removed: "Убрано из сохранённых", signInFirst: "Войди, чтобы откликнуться",
+    googleHelp: "Вход через Google ещё не настроен в Supabase."
+  },
+  en: {
+    nav: ["Projects", "Partners", "How it works"],
+    login: "Log in", logout: "Log out", create: "Start a project",
+    eyebrow: "A PLATFORM FOR PEOPLE WHO MAKE THINGS",
+    titleA: "Good ideas", titleB: "need good people.",
+    subtitle: "KLYRO helps you find a partner, build a team, and take an idea to its first release.",
+    browse: "Explore projects", projects: "Community projects",
+    fresh: "Meet people by skills, stack, and the way you want to work.",
+    all: "All", partner: "Find a partner", team: "Build a team",
+    search: "Search projects, skills, technologies",
+    saved: "Saved", members: "members", join: "I’m interested",
+    noResults: "Nothing matches this search yet.", open: "Open project",
+    how: "How it works", howTitle: "Fewer random chats. More shipping.",
+    steps: [["Share the idea", "Explain what you are building and who you need."], ["Find your people", "Filter projects by skills and favourite AI tools."], ["Start building", "Apply and turn a conversation into a product."]],
+    cta: "Have an idea ready to ship?", ctaSub: "Publish it and meet people who want to make it real.", start: "Start for free",
+    auth: "Welcome to KLYRO", email: "Email address", password: "Password", signIn: "Sign in", signUp: "Create account", google: "Continue with Google",
+    createTitle: "New project", projectName: "Project name", description: "What are you building?", category: "Category", skills: "Skills needed, comma separated", tools: "AI tools, comma separated", image: "Project cover", collaboration: "Looking for", publish: "Publish project", back: "Back",
+    sent: "Application sent", published: "Project published", added: "Saved", removed: "Removed from saved", signInFirst: "Log in to apply",
+    googleHelp: "Google sign-in is not configured in Supabase yet."
+  }
+};
+
+const isDbId = (id: string) => /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(id);
+
+export default function Home() {
+  const [lang, setLang] = useState<Lang>("ru");
+  const [projects, setProjects] = useState<Project[]>(demoProjects);
+  const [filter, setFilter] = useState("all");
+  const [query, setQuery] = useState("");
+  const [saved, setSaved] = useState<string[]>([]);
+  const [modal, setModal] = useState<Modal>(null);
+  const [user, setUser] = useState<any>(null);
+  const [toast, setToast] = useState("");
+  const [imagePreview, setImagePreview] = useState("");
+  const t = copy[lang];
+
+  useEffect(() => {
+    const localProjects = localStorage.getItem("klyro-projects");
+    const localSaved = localStorage.getItem("klyro-saved");
+    if (localProjects) setProjects(JSON.parse(localProjects));
+    if (localSaved) setSaved(JSON.parse(localSaved));
+    if (!supabase) return;
+    supabase.auth.getUser().then(({ data }) => setUser(data.user));
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => setUser(session?.user ?? null));
+    supabase.from("projects").select("id,title,description,category,skills,technologies,image_url,collaboration_type,profiles(display_name)").order("created_at", { ascending: false }).then(({ data, error }) => {
+      if (error || !data?.length) return;
+      setProjects(data.map((item: any) => ({
+        id: item.id, title: item.title, description: item.description, category: item.category,
+        skills: item.skills ?? [], tools: item.technologies ?? [], imageUrl: item.image_url ?? undefined,
+        members: 1, owner: item.profiles?.display_name || "KLYRO member",
+        kind: item.collaboration_type === "partner" ? "Ищу напарника" : "Ищу команду", emoji: "✦"
+      })));
+    });
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  const shown = useMemo(() => projects.filter(project => {
+    const search = [project.title, project.description, project.category, ...project.skills, ...project.tools].join(" ").toLowerCase();
+    const typeMatch = filter === "all" || (filter === "partner" ? project.kind === "Ищу напарника" : project.kind === "Ищу команду");
+    return typeMatch && (!query || search.includes(query.toLowerCase()));
+  }), [projects, filter, query]);
+
+  function notice(message: string) {
+    setToast(message);
+    window.setTimeout(() => setToast(""), 2600);
+  }
+
+  function toggleSaved(id: string) {
+    const next = saved.includes(id) ? saved.filter(item => item !== id) : [id, ...saved];
+    setSaved(next);
+    localStorage.setItem("klyro-saved", JSON.stringify(next));
+    notice(saved.includes(id) ? t.removed : t.added);
+  }
+
+  async function publish(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const file = form.get("image") as File;
+    let imageUrl = imagePreview;
+
+    if (file?.size && supabase && user) {
+      const ext = file.name.split(".").pop() || "jpg";
+      const path = user.id + "/" + crypto.randomUUID() + "." + ext;
+      const upload = await supabase.storage.from("project-images").upload(path, file);
+      if (upload.error) return notice(upload.error.message);
+      imageUrl = supabase.storage.from("project-images").getPublicUrl(path).data.publicUrl;
+    }
+
+    const project: Project = {
+      id: Date.now().toString(),
+      title: String(form.get("title")),
+      description: String(form.get("description")),
+      category: String(form.get("category")),
+      skills: String(form.get("skills")).split(",").map(x => x.trim()).filter(Boolean),
+      tools: String(form.get("tools")).split(",").map(x => x.trim()).filter(Boolean),
+      members: 1,
+      owner: user?.user_metadata?.name || user?.email?.split("@")[0] || "KLYRO member",
+      kind: String(form.get("kind")),
+      emoji: "✦",
+      imageUrl
+    };
+
+    const next = [project, ...projects];
+    setProjects(next);
+    localStorage.setItem("klyro-projects", JSON.stringify(next));
+
+    if (supabase && user) {
+      const result = await supabase.from("projects").insert({
+        title: project.title, description: project.description, category: project.category,
+        skills: project.skills, technologies: project.tools, owner_id: user.id,
+        collaboration_type: project.kind === "Ищу напарника" ? "partner" : "team",
+        image_url: imageUrl || null
+      }).select("id").single();
+      if (result.error) return notice(result.error.message);
+      project.id = result.data.id;
+    }
+    setModal(null);
+    setImagePreview("");
+    notice(t.published);
+  }
+
+  async function auth(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!supabase) return notice("Supabase is not connected");
+    const form = new FormData(event.currentTarget);
+    const action = (event.nativeEvent as SubmitEvent).submitter?.getAttribute("value");
+    const email = String(form.get("email"));
+    const password = String(form.get("password"));
+    const result = action === "signup"
+      ? await supabase.auth.signUp({ email, password })
+      : await supabase.auth.signInWithPassword({ email, password });
+    if (result.error) return notice(result.error.message);
+    setUser(result.data.user);
+    setModal(null);
+  }
+
+  async function google() {
+    if (!supabase) return notice("Supabase is not connected");
+    const { error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.origin } });
+    if (error) notice(t.googleHelp);
+  }
+
+  async function apply(project: Project) {
+    if (!user) {
+      notice(t.signInFirst);
+      return setModal("auth");
+    }
+    if (supabase && isDbId(project.id)) {
+      const { error } = await supabase.from("applications").insert({ project_id: project.id, applicant_id: user.id, message: "Interested via KLYRO" });
+      if (error) return notice(error.code === "23505" ? (lang === "ru" ? "Ты уже откликнулся" : "You already applied") : error.message);
+    }
+    notice(t.sent);
+  }
+
+  return <main className="min-h-screen">
+    <div className="mesh noise" />
+    <nav className="relative z-10 mx-auto flex max-w-7xl items-center justify-between px-5 py-5 md:px-8">
+      <a href="#" className="flex items-center gap-2.5 font-bold tracking-tight"><span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-violet-400 to-violet-700 text-lg shadow-lg shadow-violet-700/30">K</span><span className="text-lg">KLYRO</span></a>
+      <div className="hidden items-center gap-7 text-sm text-zinc-400 md:flex">{t.nav.map((label, index) => <a key={label} href={index === 0 ? "#projects" : index === 1 ? "#projects" : "#how"} className="transition hover:text-white">{label}</a>)}</div>
+      <div className="flex items-center gap-2">
+        <button onClick={() => setLang(lang === "ru" ? "en" : "ru")} className="rounded-lg px-2.5 py-2 text-xs text-zinc-400 hover:bg-white/5"><Globe2 className="mr-1 inline" size={14} />{lang.toUpperCase()}</button>
+        {user ? <button onClick={async () => { await supabase?.auth.signOut(); setUser(null); }} className="hidden rounded-lg px-3 py-2 text-sm text-zinc-300 hover:bg-white/5 sm:block">{t.logout}</button> : <button onClick={() => setModal("auth")} className="rounded-lg px-3 py-2 text-sm text-zinc-200 hover:bg-white/5">{t.login}</button>}
+        <button onClick={() => setModal("create")} className="violet-btn rounded-xl px-3.5 py-2.5 text-sm font-semibold"><Plus className="mr-1 inline" size={16}/><span className="hidden sm:inline">{t.create}</span></button>
+      </div>
+    </nav>
+
+    <section className="relative z-10 mx-auto max-w-7xl px-5 pb-24 pt-14 md:px-8 md:pb-32 md:pt-24">
+      <div className="mx-auto max-w-4xl text-center">
+        <div className="glass mb-7 inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-[10px] font-bold tracking-[.17em] text-violet-200"><Sparkles size={13}/>{t.eyebrow}</div>
+        <h1 className="text-5xl font-bold leading-[1.02] tracking-[-.055em] md:text-7xl">{t.titleA}<br/><span className="gradient-text">{t.titleB}</span></h1>
+        <p className="mx-auto mt-6 max-w-2xl text-base leading-7 text-zinc-400 md:text-lg">{t.subtitle}</p>
+        <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
+          <a href="#projects" className="violet-btn rounded-xl px-6 py-3.5 text-sm font-semibold">{t.browse}<ArrowUpRight className="ml-2 inline" size={16}/></a>
+          <button onClick={() => setModal("create")} className="rounded-xl border border-white/10 bg-white/[.035] px-6 py-3.5 text-sm font-semibold transition hover:bg-white/[.07]"><Plus className="mr-2 inline" size={16}/>{t.create}</button>
+        </div>
+      </div>
+      <div className="glass mx-auto mt-14 grid max-w-4xl grid-cols-3 overflow-hidden rounded-2xl text-center">
+        {[[projects.length, lang === "ru" ? "идей в ленте" : "ideas live"], [saved.length, t.saved.toLowerCase()], ["24/7", lang === "ru" ? "ищем своих" : "finding people"]].map(([value, label]) => <div key={String(label)} className="border-r border-white/[.07] p-4 last:border-0 md:p-5"><strong className="block text-lg md:text-xl">{value}</strong><span className="mt-1 block text-[10px] text-zinc-500 md:text-xs">{label}</span></div>)}
+      </div>
+    </section>
+
+    <section id="projects" className="relative z-10 mx-auto max-w-7xl px-5 pb-24 md:px-8">
+      <div className="mb-7 flex flex-col justify-between gap-5 md:flex-row md:items-end">
+        <div><p className="mb-2 text-xs font-bold uppercase tracking-[.16em] text-violet-300">{t.projects}</p><h2 className="text-3xl font-bold tracking-tight md:text-4xl">{lang === "ru" ? "Выбери, что хочешь" : "Pick what you want to"} <span className="gradient-text">{lang === "ru" ? "запустить." : "ship."}</span></h2><p className="mt-3 max-w-xl text-sm text-zinc-500">{t.fresh}</p></div>
+        <button onClick={() => setModal("create")} className="violet-btn self-start rounded-xl px-4 py-3 text-sm font-semibold md:self-auto"><Plus className="mr-2 inline" size={16}/>{t.create}</button>
+      </div>
+      <div className="glass mb-7 rounded-2xl p-3">
+        <div className="flex flex-col gap-3 lg:flex-row">
+          <label className="relative flex-1"><Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" size={18}/><input className="field py-3 pl-11 pr-4 text-sm" value={query} onChange={e => setQuery(e.target.value)} placeholder={t.search}/></label>
+          <div className="flex gap-2 overflow-x-auto">{[["all", t.all], ["partner", t.partner], ["team", t.team]].map(([value, label]) => <button key={value} onClick={() => setFilter(value)} className={`whitespace-nowrap rounded-xl px-4 py-3 text-xs font-medium transition ${filter === value ? "bg-white text-zinc-950" : "border border-white/10 text-zinc-400 hover:bg-white/5"}`}>{label}</button>)}</div>
+        </div>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {shown.map(project => <article key={project.id} className="k-card">
+          {project.imageUrl ? <img src={project.imageUrl} alt="" className="relative z-10 h-44 w-full object-cover"/> : <div className="relative z-10 flex h-28 items-center justify-between px-5"><span className="grid h-12 w-12 place-items-center rounded-2xl bg-violet-400/10 text-2xl text-violet-200">{project.emoji}</span><span className="chip px-3 py-1.5 text-[11px]">{project.category}</span></div>}
+          <div className="relative z-10 p-5">{project.imageUrl && <div className="mb-3 flex justify-between"><span className="chip px-3 py-1.5 text-[11px]">{project.category}</span><button onClick={() => toggleSaved(project.id)} aria-label={t.saved} className="text-zinc-400 transition hover:text-violet-200">{saved.includes(project.id) ? <BookmarkCheck size={20} className="text-violet-300"/> : <Bookmark size={20}/>}</button></div>}
+            {!project.imageUrl && <button onClick={() => toggleSaved(project.id)} aria-label={t.saved} className="absolute right-5 top-[-65px] text-zinc-400 transition hover:text-violet-200">{saved.includes(project.id) ? <BookmarkCheck size={20} className="text-violet-300"/> : <Bookmark size={20}/>}</button>}
+            <h3 className="text-lg font-bold tracking-tight">{project.title}</h3><p className="mt-2 min-h-[3rem] text-sm leading-6 text-zinc-400">{project.description}</p>
+            <div className="mt-4 flex flex-wrap gap-1.5">{project.skills.slice(0, 3).map(skill => <span key={skill} className="chip px-2.5 py-1 text-[11px]">{skill}</span>)}</div>
+            <div className="mt-5 flex items-center justify-between border-t border-white/[.08] pt-4"><div className="text-xs text-zinc-500"><span className="text-zinc-300">{project.owner}</span><span className="mx-1.5">·</span><Users className="mr-1 inline" size={13}/>{project.members} {t.members}</div><button onClick={() => apply(project)} className="rounded-lg bg-white/8 px-3 py-2 text-xs font-semibold transition hover:bg-violet-500">{t.join}<ArrowUpRight className="ml-1 inline" size={13}/></button></div>
+          </div>
+        </article>)}
+      </div>
+      {!shown.length && <div className="glass rounded-2xl py-16 text-center text-sm text-zinc-500">{t.noResults}</div>}
+    </section>
+
+    <section id="how" className="relative z-10 mx-auto max-w-7xl px-5 pb-24 md:px-8">
+      <p className="mb-2 text-xs font-bold uppercase tracking-[.16em] text-violet-300">{t.how}</p><h2 className="max-w-xl text-3xl font-bold tracking-tight md:text-4xl">{t.howTitle}</h2>
+      <div className="mt-8 grid gap-4 md:grid-cols-3">{t.steps.map(([title, body], index) => <div key={title} className="k-card p-6"><span className="mb-7 grid h-10 w-10 place-items-center rounded-xl bg-violet-400/10 text-sm font-bold text-violet-200">0{index + 1}</span><h3 className="font-bold">{title}</h3><p className="mt-2 text-sm leading-6 text-zinc-400">{body}</p></div>)}</div>
+    </section>
+
+    <section className="relative z-10 mx-5 mb-16 overflow-hidden rounded-3xl border border-violet-300/15 bg-gradient-to-br from-violet-600/25 via-[#181522] to-emerald-400/10 px-6 py-12 text-center md:mx-auto md:max-w-7xl md:px-12 md:py-16">
+      <Zap className="mx-auto mb-5 text-violet-200" size={28}/><h2 className="text-3xl font-bold tracking-tight md:text-4xl">{t.cta}</h2><p className="mt-3 text-zinc-300/70">{t.ctaSub}</p><button onClick={() => setModal("create")} className="mt-7 rounded-xl bg-white px-6 py-3.5 text-sm font-bold text-zinc-950">{t.start}<ArrowUpRight className="ml-2 inline" size={16}/></button>
+    </section>
+
+    <footer className="relative z-10 flex flex-col gap-2 border-t border-white/[.07] px-5 py-7 text-center text-xs text-zinc-600 md:flex-row md:justify-between md:px-8"><span>© 2026 KLYRO</span><span>Find the people who make you want to build.</span></footer>
+
+    {toast && <div className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-full border border-violet-300/30 bg-[#211f2b] px-5 py-3 text-sm shadow-2xl">{toast}</div>}
+    {modal && <div onClick={() => setModal(null)} className="fixed inset-0 z-40 grid place-items-center bg-black/75 p-4 backdrop-blur-sm"><div onClick={e => e.stopPropagation()} className="glass w-full max-w-lg rounded-2xl p-5 md:p-6"><div className="mb-5 flex items-center justify-between"><div><h3 className="text-xl font-bold">{modal === "create" ? t.createTitle : t.auth}</h3><p className="mt-1 text-xs text-zinc-500">{modal === "create" ? (lang === "ru" ? "Собери людей вокруг идеи." : "Bring the right people around an idea.") : (lang === "ru" ? "Сохрани проекты и откликайся." : "Save projects and apply.")}</p></div><button onClick={() => setModal(null)} className="rounded-lg p-2 text-zinc-400 hover:bg-white/5"><X size={20}/></button></div>
+      {modal === "create" ? <form onSubmit={publish} className="space-y-3"><input required name="title" placeholder={t.projectName} className="field p-3"/><textarea required name="description" rows={3} placeholder={t.description} className="field p-3"/><div className="grid gap-3 sm:grid-cols-2"><input required name="category" placeholder={t.category} className="field p-3"/><select name="kind" className="field p-3"><option value="Ищу команду">{t.team}</option><option value="Ищу напарника">{t.partner}</option></select></div><input name="skills" placeholder={t.skills} className="field p-3"/><input name="tools" placeholder={t.tools} className="field p-3"/><label className="block cursor-pointer rounded-xl border border-dashed border-white/15 p-3 text-sm text-zinc-400">{t.image}<input type="file" name="image" accept="image/jpeg,image/png,image/webp,image/gif" className="mt-2 block w-full text-xs" onChange={e => { const file = e.target.files?.[0]; if (!file) return; if (file.size > 4 * 1024 * 1024) { e.target.value = ""; return notice("Image maximum size is 4 MB"); } const reader = new FileReader(); reader.onload = () => setImagePreview(String(reader.result)); reader.readAsDataURL(file); }}/>{imagePreview && <img src={imagePreview} alt="Preview" className="mt-3 h-32 w-full rounded-lg object-cover"/>}</label><div className="flex justify-end gap-2 pt-2"><button type="button" onClick={() => setModal(null)} className="rounded-xl px-4 py-3 text-sm text-zinc-400">{t.back}</button><button className="violet-btn rounded-xl px-5 py-3 text-sm font-bold">{t.publish}</button></div></form> :
+      <form onSubmit={auth} className="space-y-3"><button type="button" onClick={google} className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[.035] px-4 py-3 text-sm font-semibold transition hover:bg-white/[.08]"><span className="grid h-5 w-5 place-items-center rounded-full bg-white text-xs font-bold text-zinc-900">G</span>{t.google}</button><div className="flex items-center gap-3 py-1 text-[11px] text-zinc-600"><span className="h-px flex-1 bg-white/10"/>{lang === "ru" ? "или по почте" : "or with email"}<span className="h-px flex-1 bg-white/10"/></div><input required type="email" name="email" placeholder={t.email} className="field p-3"/><input required type="password" minLength={6} name="password" placeholder={t.password} className="field p-3"/><div className="grid grid-cols-2 gap-2 pt-1"><button name="action" value="signin" className="violet-btn rounded-xl px-4 py-3 text-sm font-bold">{t.signIn}</button><button name="action" value="signup" className="rounded-xl border border-white/10 px-4 py-3 text-sm transition hover:bg-white/5">{t.signUp}</button></div></form>}
+    </div></div>}
+  </main>;
+}
