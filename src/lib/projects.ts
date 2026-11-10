@@ -1,0 +1,6 @@
+export type Project={id:string;title:string;description:string;category:string;skills:string[];tools:string[];members:number;owner:string;kind:string;emoji:string;};
+export const demoProjects:Project[]=[
+{id:"1",title:"AI-планировщик для команд",description:"Собираем умный workspace: задачи, заметки и AI-резюме встреч в одном месте.",category:"AI / SaaS",skills:["Next.js","AI","Product"],tools:["Cursor","Claude"],members:3,owner:"Мария К.",kind:"Ищу команду",emoji:"✳️"},
+{id:"2",title:"Дизайн-система нового поколения",description:"Открытая библиотека компонентов для быстрого создания красивых интерфейсов.",category:"DevTools",skills:["React","TypeScript","Design"],tools:["Figma","Lovable"],members:2,owner:"Артём В.",kind:"Ищу напарника",emoji:"◈"},
+{id:"3",title:"Local food map",description:"Карта локальных кофеен и мест с душой. Запускаем MVP в одном городе.",category:"Community",skills:["Maps","React","Supabase"],tools:["Bolt","Replit"],members:4,owner:"Саша Н.",kind:"Ищу команду",emoji:"⌁"},
+{id:"4",title:"Генератор лендингов",description:"Из короткого брифа в адаптивную страницу за минуту. Ищем человека на backend.",category:"AI / SaaS",skills:["Node.js","AI","API"],tools:["Cursor","Claude"],members:2,owner:"Илья Р.",kind:"Ищу напарника",emoji:"✳"}];
